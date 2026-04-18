@@ -1,0 +1,25 @@
+import warnings
+warnings.filterwarnings("ignore")
+
+from pathlib import Path
+from src.scraper import main as run_scraper
+from src.geocode import main as run_geocode
+from src.aggregate import main as run_aggregate
+
+
+def main():
+    scrape_path = run_scraper()
+    if not scrape_path:
+        print("\n[!] Scraping produced no data — stopping.")
+        return
+
+    geo_path = run_geocode(str(scrape_path))
+    if not geo_path:
+        print("\n[!] Geocoding failed — stopping.")
+        return
+
+    run_aggregate(str(geo_path))
+
+
+if __name__ == "__main__":
+    main()
