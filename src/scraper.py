@@ -319,68 +319,102 @@ class ScraperZap:
 
     # ── Run ───────────────────────────────────────────────────────────────────
 
+    def _wait_for_listings(self, timeout=30):
+        WebDriverWait(self.driver, timeout).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "[data-cy='rp-property-cd']"))
+        )
+
+    def _scroll_page(self):
+        time.sleep(random.uniform(4, 8))
+        for i in range(1, 5):
+            self.driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/4});")
+            time.sleep(0.5)
+
     def run(self):
         scraped_at = self.timestamp_now.strftime("%Y-%m-%d %H:%M:%S")
         all_data = []
         remaining = 501
+        band = 0
 
         while remaining > 500:
+            band += 1
             remaining = self.get_total_listings()
             if remaining == 0:
                 break
 
             pages = min(math.ceil(remaining / 28), 50)
-            print(f"[*] R${self.precomin:,} → R${self.precomax:,} | {remaining} listings | {pages} pages")
+            print(f"[*] Band {band} | R${self.precomin:,} → R${self.precomax:,} | {remaining} listings | {pages} pages")
 
+            # page 1 is already loaded by get_total_listings
+            batch = []
+            browser_crashed = False
             try:
-                WebDriverWait(self.driver, 25).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "[data-cy='rp-property-cd']"))
-                )
+                self._wait_for_listings(30)
             except TimeoutException:
-                print("[!] Listings didn't load on page 1")
-                break
-
-            time.sleep(random.uniform(4, 8))
-            for i in range(1, 5):
-                self.driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/4});")
-                time.sleep(0.5)
-
-            batch = self.parse_page(self.driver.page_source)
-            print(f"[*] Page 1/{pages}  — {len(batch)} listings")
-
-            for page in range(2, pages + 1):
-                time.sleep(random.uniform(8, 15))
-
-                if not self._click_next_page():
-                    print(f"[!] Next page button not found at page {page}")
-                    break
-
-                try:
-                    WebDriverWait(self.driver, 25).until(
-                        EC.presence_of_element_located((By.CSS_SELECTOR, "[data-cy='rp-property-cd']"))
-                    )
-                except TimeoutException:
-                    print(f"[!] No listings on page {page}")
-                    break
-
-                time.sleep(random.uniform(4, 8))
-                for i in range(1, 5):
-                    self.driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/4});")
-                    time.sleep(0.5)
-
+                print("[!] No listings on page 1 — ending band")
+            except InvalidSessionIdException:
+                print("[!] Browser crashed on page 1 — restarting")
+                browser_crashed = True
+            else:
+                self._scroll_page()
                 page_data = self.parse_page(self.driver.page_source)
-                if not page_data:
-                    print(f"[!] Empty parse on page {page}")
-                    break
-
+                print(f"[*] Page 1/{pages}  — {len(page_data)} listings")
                 batch.extend(page_data)
-                print(f"[*] Page {page}/{pages}  — {len(page_data)} listings")
+
+                for page in range(2, pages + 1):
+                    time.sleep(random.uniform(8, 15))
+
+                    if not self._click_next_page():
+                        print(f"[!] Next page button not found at page {page}")
+                        break
+
+                    try:
+                        self._wait_for_listings(30)
+                    except TimeoutException:
+                        print(f"[!] Timeout on page {page} — waiting and retrying...")
+                        time.sleep(random.uniform(30, 50))
+                        try:
+                            self._wait_for_listings(45)
+                        except (TimeoutException, InvalidSessionIdException):
+                            print(f"[!] No listings on page {page} after retry — ending band early")
+                            break
+                    except InvalidSessionIdException:
+                        print(f"[!] Browser crashed on page {page} — ending band early")
+                        browser_crashed = True
+                        break
+
+                    self._scroll_page()
+                    page_data = self.parse_page(self.driver.page_source)
+                    if not page_data:
+                        print(f"[!] Empty parse on page {page}")
+                        break
+                    batch.extend(page_data)
+                    print(f"[*] Page {page}/{pages}  — {len(page_data)} listings")
 
             all_data.extend(batch)
-            max_price = self._p98_price(batch)
+
+            # Save checkpoint after every band so a crash never loses all data
+            if all_data:
+                checkpoint = ROOT / "data/scrape" / f"_checkpoint_{self.transacao}.parquet"
+                pd.DataFrame(all_data).to_parquet(checkpoint, index=False)
+                print(f"[*] Checkpoint saved ({len(all_data)} rows total) → {checkpoint.name}")
+
+            if not batch and band == 1:
+                print("[!] First band yielded no data — stopping")
+                break
+
+            max_price = self._p98_price(batch) if batch else self.precomin
             if max_price <= self.precomin:
-                max_price = max_price * 1.02
+                max_price = int(self.precomin * 1.02) + 1
             self.precomin = int(max_price)
+
+            self.safe_quit()
+            sleep_s = random.uniform(45, 90)
+            print(f"[*] Band {band} done ({len(batch)} listings) — restarting browser in {int(sleep_s)}s")
+            time.sleep(sleep_s)
+            if browser_crashed:
+                time.sleep(random.uniform(30, 60))
+            self.driver = self._get_driver()
 
         self.safe_quit()
 
@@ -392,42 +426,44 @@ class ScraperZap:
         return df
 
 
-def main():
-    Path("data/scrape").mkdir(parents=True, exist_ok=True)
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_config():
+    import json
+    return json.loads((ROOT / "config.json").read_text())
+
+
+def main(transacao="aluguel"):
+    config = _load_config()
+    local = f"{config['state']}+{config['city']}"
+    label = config.get("label", config["city"])
+
+    (ROOT / "data/scrape").mkdir(parents=True, exist_ok=True)
     start = datetime.datetime.now()
     timestamp = start.strftime("%Y-%m-%d_%H-%M-%S")
-    all_dfs = []
 
-    for transacao in ["venda", "aluguel"]:
-        t0 = datetime.datetime.now()
-        print(f"\n[{t0.strftime('%H:%M:%S')}] {'─'*44}")
-        print(f"[{t0.strftime('%H:%M:%S')}]  {transacao.upper()} | Porto Alegre")
-        print(f"[{t0.strftime('%H:%M:%S')}] {'─'*44}")
+    print(f"\n[{start.strftime('%H:%M:%S')}] {'─'*44}")
+    print(f"[{start.strftime('%H:%M:%S')}]  {transacao.upper()} | {label}")
+    print(f"[{start.strftime('%H:%M:%S')}] {'─'*44}")
 
-        scraper = ScraperZap(transacao=transacao, local="rs+porto-alegre", tipo=TIPOS)
-        df = scraper.run()
+    scraper = ScraperZap(transacao=transacao, local=local, tipo=TIPOS)
+    df = scraper.run()
 
-        elapsed = (datetime.datetime.now() - t0).seconds
-        if not df.empty:
-            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}]  {transacao}: {len(df)} listings  ({elapsed}s)")
-            all_dfs.append(df)
-        else:
-            print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}]  {transacao}: no data  ({elapsed}s)")
+    elapsed = (datetime.datetime.now() - start).seconds
+    if df.empty:
+        print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}]  {transacao}: no data  ({elapsed}s)")
+        return None
 
-    if not all_dfs:
-        print("\n[!] No data scraped")
-        return
+    df = df.drop_duplicates(subset=["id"], keep="last")
+    path = ROOT / "data/scrape" / f"{transacao}_{timestamp}.parquet"
+    df.to_parquet(path, index=False)
 
-    df_final = pd.concat(all_dfs, ignore_index=True)
-    df_final = df_final.drop_duplicates(subset=["id"], keep="last")
-
-    path = Path("data/scrape") / f"{timestamp}.parquet"
-    df_final.to_parquet(path, index=False)
-
-    total_elapsed = (datetime.datetime.now() - start).seconds
-    print(f"\n[{datetime.datetime.now().strftime('%H:%M:%S')}]  Saved → {path}  ({len(df_final)} rows, {total_elapsed}s total)")
+    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}]  Saved → {path}  ({len(df)} rows, {elapsed}s)")
     return path
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    transacao = sys.argv[1] if len(sys.argv) >= 2 else "aluguel"
+    main(transacao)

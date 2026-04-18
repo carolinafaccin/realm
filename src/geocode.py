@@ -9,7 +9,8 @@ from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 RESOLUTION = 9
-CACHE_FILE = Path("data/.geocache.json")
+ROOT = Path(__file__).resolve().parent.parent
+CACHE_FILE = ROOT / "data/.geocache.json"
 RATE_LIMIT = 1.1  # Nominatim policy: max 1 request/second
 
 
@@ -52,7 +53,7 @@ def main(parquet_path):
         print(f"[!] File not found: {src}")
         return
 
-    out_dir = Path("data/georeferenced")
+    out_dir = ROOT / "data/geocode"
     out_dir.mkdir(parents=True, exist_ok=True)
     dest = out_dir / src.name
 
@@ -128,7 +129,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2:
         target = sys.argv[1]
     else:
-        parquets = sorted(Path("data/scrape").glob("*.parquet"))
+        parquets = sorted((ROOT / "data/scrape").glob("*.parquet"))
         if not parquets:
             print("[!] No parquet files found in data/scrape/")
             sys.exit(1)

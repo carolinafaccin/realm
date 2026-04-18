@@ -2,6 +2,8 @@ import sys
 import pandas as pd
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent.parent
+
 
 def main(parquet_path):
     src = Path(parquet_path)
@@ -9,7 +11,7 @@ def main(parquet_path):
         print(f"[!] File not found: {src}")
         return
 
-    out_dir = Path("data/h3")
+    out_dir = ROOT / "data/aggregate"
     out_dir.mkdir(parents=True, exist_ok=True)
     dest = out_dir / src.name
 
@@ -53,7 +55,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2:
         target = sys.argv[1]
     else:
-        parquets = sorted(Path("data/georeferenced").glob("*.parquet"))
+        parquets = sorted((ROOT / "data/georeferenced").glob("*.parquet"))
         if not parquets:
             print("[!] No parquet files found in data/georeferenced/")
             sys.exit(1)
