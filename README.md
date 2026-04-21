@@ -9,8 +9,6 @@ Web scraping project designed to extract and analyze real estate data from leadi
 
 - **Georeferrencing**: Geocode the data, adding latitude and longitude for each entry.
 
-- **Initial analysis**: Conduct a preliminary analysis calculating price per square meter, per H3 Hexagonal grid (resolution 9).
-
 ## Running the Project
 
 Clone the repository and run the main script: `python run.py`
