@@ -93,13 +93,14 @@ def _ensure_arm64_chromedriver():
 
 class ScraperZap:
 
-    def __init__(self, transacao="aluguel", tipo=TIPOS, local="rs+porto-alegre", precomin=0, precomax=999999999):
+    def __init__(self, transacao="aluguel", tipo=TIPOS, local="rs+porto-alegre", precomin=0, precomax=999999999, max_listings=None):
         self.base_url = "https://www.zapimoveis.com.br"
         self.transacao = transacao
         self.tipo = tipo
         self.local = local
         self.precomin = precomin
         self.precomax = precomax
+        self.max_listings = max_listings
         self.timestamp_now = datetime.datetime.now(tz=pytz.timezone("America/Sao_Paulo"))
         self.driver = self._get_driver()
         print(f"[*] Initialized: {transacao} | {local} | R${precomin}-R${precomax}")
@@ -160,7 +161,7 @@ class ScraperZap:
         return (
             f"{self.base_url}/{self.transacao}/apartamentos/{self.local}"
             f"/?pagina={page}&tipos={self.tipo}"
-            f"&precoMinimo={self.precomin}&precoMaximo={self.precomax}&ordem=LOWEST_PRICE"
+            f"&precoMinimo={self.precomin}&precoMaximo={self.precomax}&ordem=Newest"
         )
 
     def get_total_listings(self):
@@ -337,6 +338,10 @@ class ScraperZap:
         band = 0
 
         while remaining > 500:
+            if self.max_listings and len(all_data) >= self.max_listings:
+                print(f"[*] Reached max_listings limit ({self.max_listings}) — stopping")
+                break
+
             band += 1
             remaining = self.get_total_listings()
             if remaining == 0:
@@ -390,6 +395,9 @@ class ScraperZap:
                         break
                     batch.extend(page_data)
                     print(f"[*] Page {page}/{pages}  — {len(page_data)} listings")
+                    if self.max_listings and len(all_data) + len(batch) >= self.max_listings:
+                        print(f"[*] Reached max_listings limit ({self.max_listings}) — ending band early")
+                        break
 
             all_data.extend(batch)
 
@@ -456,7 +464,8 @@ def main(transacao="aluguel"):
     print(f"[{start.strftime('%H:%M:%S')}]  {transacao.upper()} | {label}")
     print(f"[{start.strftime('%H:%M:%S')}] {'─'*44}")
 
-    scraper = ScraperZap(transacao=transacao, local=local, tipo=TIPOS)
+    max_listings = config.get("max_listings", None)
+    scraper = ScraperZap(transacao=transacao, local=local, tipo=TIPOS, max_listings=max_listings)
     df = scraper.run()
 
     elapsed = (datetime.datetime.now() - start).seconds

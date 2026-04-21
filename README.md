@@ -1,5 +1,5 @@
-# REALM
-**REALM** - *Real Estate Data Location Mining* - is a web scraping project designed to extract and analyze real estate data from leading Brazilian platform.
+# ZAP-SCRAPING
+Web scraping project designed to extract and analyze real estate data from leading Brazilian platform.
 
 ## Goals
 

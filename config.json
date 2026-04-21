@@ -1,5 +1,7 @@
 {
   "city": "porto-alegre",
   "state": "rs",
-  "label": "Porto Alegre"
+  "label": "Porto Alegre",
+  "transacao": "aluguel",
+  "max_listings": 3000
 }
