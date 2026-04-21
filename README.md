@@ -8,7 +8,7 @@ The pipeline runs three steps in sequence:
 
 1. **Scrape** — collects listings from ZAP Imóveis using Selenium with `undetected-chromedriver`. Uses a price-band strategy to work around the platform's 500-listing-per-search cap. Saves checkpoints after each band so no data is lost on crash.
 
-2. **Geocode** — resolves listing addresses to coordinates via Nominatim (OpenStreetMap). Results are cached locally in `data/.geocache.json` to avoid redundant requests. Each row is also assigned an [H3](https://h3geo.org/) hexagonal cell index at resolution 9.
+2. **Geocode** — resolves listing addresses to coordinates via Nominatim (OpenStreetMap). Results are cached locally in `data/.geocache.json` to avoid redundant requests.
 
 3. **Export** — converts the geocoded Parquet file to a GeoPackage (`.gpkg`) ready to open in QGIS or any GIS tool.
 
@@ -63,7 +63,6 @@ Each listing record contains:
 | `iptu` | Property tax (BRL) |
 | `scraped_at` | Timestamp of collection |
 | `latitude` / `longitude` | Geocoded coordinates |
-| `h3_id` | H3 cell index at resolution 9 |
 
 ## Repository structure
 
@@ -87,4 +86,4 @@ zap-scraping/
 
 - Python 3.11+
 - Google Chrome (macOS; ARM64 chromedriver is downloaded automatically)
-- Dependencies: `selenium`, `undetected-chromedriver`, `beautifulsoup4`, `pandas`, `geopy`, `h3`, `geopandas`, `shapely`, `pytz`
+- Dependencies: `selenium`, `undetected-chromedriver`, `beautifulsoup4`, `pandas`, `geopy`, `geopandas`, `shapely`, `pytz`

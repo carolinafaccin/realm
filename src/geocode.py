@@ -2,13 +2,11 @@ import sys
 import json
 import time
 import datetime
-import h3
 import pandas as pd
 from pathlib import Path
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
-RESOLUTION = 9
 ROOT = Path(__file__).resolve().parent.parent
 CACHE_FILE = ROOT / "data/.geocache.json"
 RATE_LIMIT = 1.1  # Nominatim policy: max 1 request/second
@@ -107,20 +105,13 @@ def main(parquet_path):
     df["latitude"] = df["_addr"].map(lambda a: (cache.get(a) or [None, None])[0])
     df["longitude"] = df["_addr"].map(lambda a: (cache.get(a) or [None, None])[1])
 
-    mask = df["latitude"].notna() & df["longitude"].notna()
-    df["h3_id"] = None
-    df.loc[mask, "h3_id"] = df.loc[mask].apply(
-        lambda r: h3.latlng_to_cell(float(r["latitude"]), float(r["longitude"]), RESOLUTION),
-        axis=1,
-    )
-
     df = df.drop(columns=["_addr"])
     df.to_parquet(dest, index=False)
 
-    geocoded = int(df["h3_id"].notna().sum())
+    geocoded = int(df["latitude"].notna().sum())
     elapsed = (datetime.datetime.now() - start).seconds
     print(f"\n  Saved      {dest}")
-    print(f"  H3 cells   {geocoded}/{len(df)} rows assigned  ({geocoded/len(df)*100:.1f}%)  —  resolution {RESOLUTION}")
+    print(f"  Geocoded   {geocoded}/{len(df)} rows with coordinates  ({geocoded/len(df)*100:.1f}%)")
     print(f"  Elapsed    {elapsed}s\n")
     return dest
 
